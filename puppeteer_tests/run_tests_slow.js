@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-const outDir = path.join(__dirname, '..', 'minh_chung_2');
+const outDir = path.join(__dirname, '..', 'demo_proofs');
 if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir, { recursive: true });
 }
