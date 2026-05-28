@@ -375,7 +375,7 @@ COMPOUND TRIGGER
             IF V_LIST(I).MaTaiKhoan IS NOT NULL THEN
                 SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE MaTaiKhoan = V_LIST(I).MaTaiKhoan;
                 IF V_COUNT > 1 THEN
-                    RAISE_APPLICATION_ERROR(-20220, 'Tai khoan doc gia nay da ton tai trong he thong.');
+                    RAISE_APPLICATION_ERROR(-20220, 'Tài khoản độc giả này đã tồn tại trong hệ thống.');
                 END IF;
             END IF;
 
@@ -383,7 +383,7 @@ COMPOUND TRIGGER
             IF V_LIST(I).TenDangNhap IS NOT NULL THEN
                 SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE TenDangNhap = V_LIST(I).TenDangNhap;
                 IF V_COUNT > 1 THEN
-                    RAISE_APPLICATION_ERROR(-20001, 'Loi: Ten dang nhap nay da ton tai tren he thong!');
+                    RAISE_APPLICATION_ERROR(-20001, 'Lỗi: Tên đăng nhập này đã tồn tại trên hệ thống!');
                 END IF;
             END IF;
 
@@ -391,7 +391,7 @@ COMPOUND TRIGGER
             IF V_LIST(I).Email IS NOT NULL THEN
                 SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE Email = V_LIST(I).Email;
                 IF V_COUNT > 1 THEN
-                    RAISE_APPLICATION_ERROR(-20221, 'Email doc gia nay da ton tai trong he thong.');
+                    RAISE_APPLICATION_ERROR(-20221, 'Email độc giả này đã tồn tại trong hệ thống.');
                 END IF;
             END IF;
 
@@ -399,7 +399,7 @@ COMPOUND TRIGGER
             IF V_LIST(I).SoDienThoai IS NOT NULL THEN
                 SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE SoDienThoai = V_LIST(I).SoDienThoai;
                 IF V_COUNT > 1 THEN
-                    RAISE_APPLICATION_ERROR(-20222, 'So dien thoai doc gia nay da ton tai trong he thong.');
+                    RAISE_APPLICATION_ERROR(-20222, 'Số điện thoại độc giả này đã tồn tại trong hệ thống.');
                 END IF;
             END IF;
         END LOOP;
@@ -443,7 +443,7 @@ COMPOUND TRIGGER
             IF V_LIST(I).TenDangNhap IS NOT NULL THEN
                 SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE TenDangNhap = V_LIST(I).TenDangNhap;
                 IF V_COUNT > 1 THEN
-                    RAISE_APPLICATION_ERROR(-20001, 'Loi: Ten dang nhap nay da ton tai tren he thong!');
+                    RAISE_APPLICATION_ERROR(-20001, 'Lỗi: Tên đăng nhập này đã tồn tại trên hệ thống!');
                 END IF;
             END IF;
         END LOOP;
@@ -468,7 +468,7 @@ BEFORE INSERT ON PHIEUMUON
 FOR EACH ROW
 BEGIN
     IF FN_KIEM_TRA_HAN_THE(:NEW.MaDocGia) = 0 THEN
-        RAISE_APPLICATION_ERROR(-20202, 'The doc gia da het han su dung hoac bi khoa.');
+        RAISE_APPLICATION_ERROR(-20202, 'Thẻ độc giả đã hết hạn sử dụng hoặc bị khóa.');
     END IF;
 END;
 /
@@ -490,7 +490,7 @@ BEGIN
 
     IF V_SO_DANG_MUON >= C_QUOTA THEN
         RAISE_APPLICATION_ERROR(-20204,
-            'Doc gia da muon ' || V_SO_DANG_MUON || ' cuon, vuot qua quota ' || C_QUOTA || '.');
+            'Độc giả đã mượn ' || V_SO_DANG_MUON || ' cuốn, vượt quá quota ' || C_QUOTA || '.');
     END IF;
 END;
 /
@@ -510,7 +510,7 @@ BEGIN
 
     IF V_COUNT > 0 THEN
         RAISE_APPLICATION_ERROR(-20205,
-            'Sach ' || :NEW.MaSach || ' da co trong phieu muon ' || :NEW.MaPhieuMuon || '.');
+            'Sách ' || :NEW.MaSach || ' đã có trong phiếu mượn ' || :NEW.MaPhieuMuon || '.');
     END IF;
 END;
 /
@@ -526,8 +526,8 @@ BEGIN
 
     IF V_SO_LUONG_CON < :NEW.SoLuong THEN
         RAISE_APPLICATION_ERROR(-20206,
-            'Khong du sach trong kho. Sach ' || :NEW.MaSach
-            || ' chi con ' || V_SO_LUONG_CON || ' cuon.');
+            'Không đủ sách trong kho. Sách ' || :NEW.MaSach
+            || ' chỉ còn ' || V_SO_LUONG_CON || ' cuốn.');
     END IF;
 END;
 /
@@ -553,13 +553,13 @@ BEGIN
     SELECT TrangThai INTO V_TRANGTHAI FROM PHIEUMUON WHERE MaPhieuMuon = :NEW.MaPhieuMuon;
     
     IF V_TRANGTHAI = 'DA_TRA' THEN
-        RAISE_APPLICATION_ERROR(-20208, 'Phieu muon nay da duoc tra truoc do.');
+        RAISE_APPLICATION_ERROR(-20208, 'Phiếu mượn này đã được trả trước đó.');
     ELSIF V_TRANGTHAI = 'HUY' THEN
-        RAISE_APPLICATION_ERROR(-20209, 'Khong the tra phieu muon da huy.');
+        RAISE_APPLICATION_ERROR(-20209, 'Không thể trả phiếu mượn đã hủy.');
     END IF;
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
-        RAISE_APPLICATION_ERROR(-20210, 'Khong tim thay phieu muon.');
+        RAISE_APPLICATION_ERROR(-20210, 'Không tìm thấy phiếu mượn.');
 END;
 /
 
@@ -676,7 +676,7 @@ BEGIN
     WHERE TenDangNhap = P_TEN_DANG_NHAP;
 
     IF V_COUNT > 0 THEN
-        RAISE_APPLICATION_ERROR(-20040, 'Ten dang nhap da ton tai.');
+        RAISE_APPLICATION_ERROR(-20040, 'Tên đăng nhập đã tồn tại.');
     END IF;
 
     INSERT INTO TAIKHOAN(TenDangNhap, MatKhau, VaiTro)
@@ -706,7 +706,7 @@ AS
 BEGIN
     SELECT COUNT(*) INTO V_COUNT FROM TAIKHOAN WHERE TenDangNhap = PAR_TENDANGNHAP;
     IF V_COUNT = 0 THEN
-        RAISE_APPLICATION_ERROR(-20015, 'Ten dang nhap khong ton tai.');
+        RAISE_APPLICATION_ERROR(-20015, 'Tên đăng nhập không tồn tại.');
     END IF;
 
     SELECT MaTaiKhoan, VaiTro
@@ -716,7 +716,7 @@ BEGIN
       AND MatKhau = PAR_MATKHAU;
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
-        RAISE_APPLICATION_ERROR(-20016, 'Mat khau khong chinh xac.');
+        RAISE_APPLICATION_ERROR(-20016, 'Mật khẩu không chính xác.');
 END;
 /
 
@@ -747,7 +747,7 @@ CREATE OR REPLACE PROCEDURE SP_THEM_CT_PHIEUMUON(
 IS
 BEGIN
     IF P_SO_LUONG <= 0 THEN
-        RAISE_APPLICATION_ERROR(-20102, 'So luong muon phai lon hon 0.');
+        RAISE_APPLICATION_ERROR(-20102, 'Số lượng mượn phải lớn hơn 0.');
     END IF;
 
     -- Trigger TRG_KIEMTRA_TRUNG_SACH chan trung
@@ -830,11 +830,11 @@ BEGIN
     FOR UPDATE;
 
     IF V_TRANG_THAI = 'DA_TRA' THEN
-        RAISE_APPLICATION_ERROR(-20108, 'Phieu muon da duoc tra truoc do.');
+        RAISE_APPLICATION_ERROR(-20108, 'Phiếu mượn đã được trả trước đó.');
     END IF;
 
     IF V_TRANG_THAI = 'HUY' THEN
-        RAISE_APPLICATION_ERROR(-20109, 'Khong the tra phieu muon da huy.');
+        RAISE_APPLICATION_ERROR(-20109, 'Không thể trả phiếu mượn đã hủy.');
     END IF;
 
     -- Tao phieu tra (trigger TRG_TINH_TIENPHAT tu dong tinh, TRG_CONG_TONKHO_TRA cong kho)
@@ -863,7 +863,7 @@ BEGIN
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         ROLLBACK;
-        RAISE_APPLICATION_ERROR(-20110, 'Khong tim thay phieu muon.');
+        RAISE_APPLICATION_ERROR(-20110, 'Không tìm thấy phiếu mượn.');
     WHEN OTHERS THEN
         ROLLBACK;
         RAISE;
@@ -879,7 +879,7 @@ IS
     V_TRANG_THAI PHIEUMUON.TrangThai%TYPE;
 BEGIN
     IF P_SO_NGAY <= 0 THEN
-        RAISE_APPLICATION_ERROR(-20120, 'So ngay gia han phai lon hon 0.');
+        RAISE_APPLICATION_ERROR(-20120, 'Số ngày gia hạn phải lớn hơn 0.');
     END IF;
 
     SELECT TrangThai
@@ -889,7 +889,7 @@ BEGIN
     FOR UPDATE;
 
     IF V_TRANG_THAI NOT IN ('DANG_MUON', 'QUA_HAN') THEN
-        RAISE_APPLICATION_ERROR(-20121, 'Chi gia han duoc phieu dang muon.');
+        RAISE_APPLICATION_ERROR(-20121, 'Chỉ gia hạn được phiếu đang mượn.');
     END IF;
 
     UPDATE PHIEUMUON
@@ -901,7 +901,7 @@ BEGIN
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         ROLLBACK;
-        RAISE_APPLICATION_ERROR(-20122, 'Khong tim thay phieu muon.');
+        RAISE_APPLICATION_ERROR(-20122, 'Không tìm thấy phiếu mượn.');
     WHEN OTHERS THEN
         ROLLBACK;
         RAISE;
@@ -920,7 +920,7 @@ IS
     V_MA_PHIEU_NHAP PHIEUNHAP.MaPhieuNhap%TYPE;
 BEGIN
     IF P_SO_LUONG <= 0 THEN
-        RAISE_APPLICATION_ERROR(-20104, 'So luong nhap phai lon hon 0.');
+        RAISE_APPLICATION_ERROR(-20104, 'Số lượng nhập phải lớn hơn 0.');
     END IF;
 
     -- Tao phieu nhap
@@ -958,7 +958,7 @@ IS
     V_MA_NCC       VARCHAR2(20);
 BEGIN
     IF P_SO_LUONG <= 0 THEN
-        RAISE_APPLICATION_ERROR(-20130, 'So luong tra NCC phai lon hon 0.');
+        RAISE_APPLICATION_ERROR(-20130, 'Số lượng trả NCC phải lớn hơn 0.');
     END IF;
 
     -- Lay don gia tu chi tiet phieu nhap
@@ -973,7 +973,7 @@ BEGIN
     FOR UPDATE;
 
     IF V_SO_LUONG_CON < P_SO_LUONG THEN
-        RAISE_APPLICATION_ERROR(-20131, 'Khong du sach trong kho de tra NCC.');
+        RAISE_APPLICATION_ERROR(-20131, 'Không đủ sách trong kho để trả NCC.');
     END IF;
 
     -- Lay ma nha cung cap tu phieu nhap
@@ -995,7 +995,7 @@ BEGIN
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         ROLLBACK;
-        RAISE_APPLICATION_ERROR(-20132, 'Khong tim thay phieu nhap hoac sach.');
+        RAISE_APPLICATION_ERROR(-20132, 'Không tìm thấy phiếu nhập hoặc sách.');
     WHEN OTHERS THEN
         ROLLBACK;
         RAISE;
@@ -1013,7 +1013,7 @@ IS
     V_SO_LUONG_CON KHOSACH.SoLuongCon%TYPE;
 BEGIN
     IF P_SO_LUONG <= 0 THEN
-        RAISE_APPLICATION_ERROR(-20105, 'So luong thanh ly phai lon hon 0.');
+        RAISE_APPLICATION_ERROR(-20105, 'Số lượng thanh lý phải lớn hơn 0.');
     END IF;
 
     SELECT SoLuongCon
@@ -1023,7 +1023,7 @@ BEGIN
     FOR UPDATE;
 
     IF V_SO_LUONG_CON < P_SO_LUONG THEN
-        RAISE_APPLICATION_ERROR(-20106, 'So luong thanh ly vuot qua so luong kha dung.');
+        RAISE_APPLICATION_ERROR(-20106, 'Số lượng thanh lý vượt quá số lượng khả dụng.');
     END IF;
 
     INSERT INTO THANHLY(MaSach, MaNhanVien, SoLuong, LyDo)
@@ -1100,7 +1100,7 @@ BEGIN
     WHERE MaSach = P_MA_SACH;
 
     IF SQL%ROWCOUNT = 0 THEN
-        RAISE_APPLICATION_ERROR(-20140, 'Khong tim thay sach can cap nhat.');
+        RAISE_APPLICATION_ERROR(-20140, 'Không tìm thấy sách cần cập nhật.');
     END IF;
 
     COMMIT;
@@ -1122,7 +1122,7 @@ BEGIN
     WHERE MaSach = P_MA_SACH;
 
     IF SQL%ROWCOUNT = 0 THEN
-        RAISE_APPLICATION_ERROR(-20141, 'Khong tim thay sach can vo hieu hoa.');
+        RAISE_APPLICATION_ERROR(-20141, 'Không tìm thấy sách cần vô hiệu hóa.');
     END IF;
 
     COMMIT;
@@ -1180,7 +1180,7 @@ BEGIN
     WHERE MaNhanVien = P_MA_NHANVIEN;
 
     IF SQL%ROWCOUNT = 0 THEN
-        RAISE_APPLICATION_ERROR(-20150, 'Khong tim thay nhan vien.');
+        RAISE_APPLICATION_ERROR(-20150, 'Không tìm thấy nhân viên.');
     END IF;
 
     COMMIT;
@@ -1231,7 +1231,7 @@ BEGIN
     WHERE MaDocGia = P_MA_DOCGIA;
 
     IF SQL%ROWCOUNT = 0 THEN
-        RAISE_APPLICATION_ERROR(-20160, 'Khong tim thay doc gia.');
+        RAISE_APPLICATION_ERROR(-20160, 'Không tìm thấy độc giả.');
     END IF;
 
     COMMIT;
@@ -1276,7 +1276,7 @@ BEGIN
     WHERE MaDoanhMuc = P_MA_DANHMUC;
 
     IF SQL%ROWCOUNT = 0 THEN
-        RAISE_APPLICATION_ERROR(-20170, 'Khong tim thay danh muc.');
+        RAISE_APPLICATION_ERROR(-20170, 'Không tìm thấy danh mục.');
     END IF;
 
     COMMIT;
