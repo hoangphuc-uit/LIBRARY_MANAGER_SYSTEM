@@ -464,10 +464,37 @@ BEGIN
             'Khong du sach trong kho. Sach ' || :NEW.MaSach
             || ' chi con ' || V_SO_LUONG_CON || ' cuon.');
     END IF;
+END;
+/
 
+-- 4.6.2) TRG_TRU_TONKHO_MUON: Tự động trừ số lượng tồn kho của sách ngay khi thêm sách vào phiếu mượn thành công. (AFTER INSERT)
+CREATE OR REPLACE TRIGGER TRG_TRU_TONKHO_MUON
+AFTER INSERT ON CT_PHIEUMUON
+FOR EACH ROW
+BEGIN
     UPDATE KHOSACH
     SET SoLuongCon = SoLuongCon - :NEW.SoLuong
     WHERE MaSach = :NEW.MaSach;
+END;
+/
+
+-- 4.6.3) TRG_CHECK_PHIEUMUON_TRA: Kiểm tra mã phiếu mượn nhập vào khi trả sách xem có tồn tại hoặc hợp lệ không. (BEFORE INSERT)
+CREATE OR REPLACE TRIGGER TRG_CHECK_PHIEUMUON_TRA
+BEFORE INSERT ON PHIEUTRA
+FOR EACH ROW
+DECLARE
+    V_TRANGTHAI PHIEUMUON.TrangThai%TYPE;
+BEGIN
+    SELECT TrangThai INTO V_TRANGTHAI FROM PHIEUMUON WHERE MaPhieuMuon = :NEW.MaPhieuMuon;
+    
+    IF V_TRANGTHAI = 'DA_TRA' THEN
+        RAISE_APPLICATION_ERROR(-20208, 'Phieu muon nay da duoc tra truoc do.');
+    ELSIF V_TRANGTHAI = 'HUY' THEN
+        RAISE_APPLICATION_ERROR(-20209, 'Khong the tra phieu muon da huy.');
+    END IF;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20210, 'Khong tim thay phieu muon.');
 END;
 /
 
@@ -599,6 +626,32 @@ EXCEPTION
     WHEN OTHERS THEN
         ROLLBACK;
         RAISE;
+END;
+/
+
+-- 5.1.2) SP_XACTHUC_DANGNHAP: Xác thực đăng nhập
+CREATE OR REPLACE PROCEDURE SP_XACTHUC_DANGNHAP(
+    PAR_TENDANGNHAP IN VARCHAR2,
+    PAR_MATKHAU      IN VARCHAR2,
+    MATK_OUT        OUT VARCHAR2,
+    VAITRO_OUT      OUT VARCHAR2
+)
+AS
+    V_COUNT NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO V_COUNT FROM TAIKHOAN WHERE TenDangNhap = PAR_TENDANGNHAP;
+    IF V_COUNT = 0 THEN
+        RAISE_APPLICATION_ERROR(-20015, 'Ten dang nhap khong ton tai.');
+    END IF;
+
+    SELECT MaTaiKhoan, VaiTro
+    INTO MATK_OUT, VAITRO_OUT
+    FROM TAIKHOAN
+    WHERE TenDangNhap = PAR_TENDANGNHAP
+      AND MatKhau = PAR_MATKHAU;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(-20016, 'Mat khau khong chinh xac.');
 END;
 /
 
