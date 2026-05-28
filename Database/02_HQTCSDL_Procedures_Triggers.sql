@@ -504,7 +504,17 @@ CREATE OR REPLACE PROCEDURE SP_DANGKY_DOCGIA(
 )
 IS
     V_MA_TAI_KHOAN TAIKHOAN.MaTaiKhoan%TYPE;
+    V_COUNT        NUMBER;
 BEGIN
+    -- Buoc 3: Kiem tra trung ten dang nhap (giong bao cao)
+    SELECT COUNT(*) INTO V_COUNT
+    FROM TAIKHOAN
+    WHERE TenDangNhap = P_TEN_DANG_NHAP;
+
+    IF V_COUNT > 0 THEN
+        RAISE_APPLICATION_ERROR(-20040, 'Ten dang nhap da ton tai.');
+    END IF;
+
     INSERT INTO TAIKHOAN(TenDangNhap, MatKhau, VaiTro)
     VALUES (P_TEN_DANG_NHAP, P_MAT_KHAU, 'DOC_GIA')
     RETURNING MaTaiKhoan INTO V_MA_TAI_KHOAN;
