@@ -1,4 +1,4 @@
-﻿-- =============================================================
+-- =============================================================
 -- HQTCSDL - Schema Oracle đúng theo mô hình trong ĐỒ_ÁN_HQTCSDL.txt
 -- Chủ đề: Hệ thống quản lý thư viện
 -- Ghi chú: Script này độc lập với schema gốc của repo, dùng làm bản chuẩn cho đồ án.
@@ -52,6 +52,7 @@ CREATE TABLE TAIKHOAN (
 CREATE TABLE DOCGIA (
     MaDocGia     VARCHAR2(20) PRIMARY KEY,
     MaTaiKhoan   VARCHAR2(20) UNIQUE,
+    TenDangNhap  VARCHAR2(50),
     HoTen        VARCHAR2(100) NOT NULL,
     Email        VARCHAR2(100) UNIQUE,
     SoDienThoai  VARCHAR2(20),

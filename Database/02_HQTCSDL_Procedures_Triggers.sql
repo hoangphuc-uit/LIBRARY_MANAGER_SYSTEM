@@ -201,7 +201,7 @@ RETURN NUMBER
 IS
     V_NGAY_HEN_TRA DATE;
     V_SO_NGAY_TRE  NUMBER;
-    C_DON_GIA      CONSTANT NUMBER := 5000;
+    C_DON_GIA      CONSTANT NUMBER := 1000;
 BEGIN
     SELECT NgayHenTra
     INTO V_NGAY_HEN_TRA
@@ -340,6 +340,7 @@ COMPOUND TRIGGER
 
     TYPE T_DOCGIA IS RECORD (
         MaTaiKhoan   VARCHAR2(20),
+        TenDangNhap  VARCHAR2(50),
         Email        VARCHAR2(100),
         SoDienThoai  VARCHAR2(20)
     );
@@ -348,8 +349,20 @@ COMPOUND TRIGGER
 
     BEFORE EACH ROW IS
     BEGIN
+        -- Tu dong dong bo TenDangNhap tu TAIKHOAN neu chua co
+        IF :NEW.TenDangNhap IS NULL AND :NEW.MaTaiKhoan IS NOT NULL THEN
+            BEGIN
+                SELECT TenDangNhap INTO :NEW.TenDangNhap
+                FROM TAIKHOAN
+                WHERE MaTaiKhoan = :NEW.MaTaiKhoan;
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN NULL;
+            END;
+        END IF;
+
         V_LIST.EXTEND;
         V_LIST(V_LIST.LAST).MaTaiKhoan := :NEW.MaTaiKhoan;
+        V_LIST(V_LIST.LAST).TenDangNhap := :NEW.TenDangNhap;
         V_LIST(V_LIST.LAST).Email := :NEW.Email;
         V_LIST(V_LIST.LAST).SoDienThoai := :NEW.SoDienThoai;
     END BEFORE EACH ROW;
@@ -366,6 +379,14 @@ COMPOUND TRIGGER
                 END IF;
             END IF;
 
+            -- Check duplicate TenDangNhap (username)
+            IF V_LIST(I).TenDangNhap IS NOT NULL THEN
+                SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE TenDangNhap = V_LIST(I).TenDangNhap;
+                IF V_COUNT > 1 THEN
+                    RAISE_APPLICATION_ERROR(-20001, 'Loi: Ten dang nhap nay da ton tai tren he thong!');
+                END IF;
+            END IF;
+
             -- Check duplicate email
             IF V_LIST(I).Email IS NOT NULL THEN
                 SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE Email = V_LIST(I).Email;
@@ -379,6 +400,50 @@ COMPOUND TRIGGER
                 SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE SoDienThoai = V_LIST(I).SoDienThoai;
                 IF V_COUNT > 1 THEN
                     RAISE_APPLICATION_ERROR(-20222, 'So dien thoai doc gia nay da ton tai trong he thong.');
+                END IF;
+            END IF;
+        END LOOP;
+    END AFTER STATEMENT;
+END;
+/
+
+-- 4.1.2) TRG_CHECK_TRUNG_TENDANGNHAP: Check trung ten dang nhap cua doc gia (Dung nhu code trong table 28 cua bao cao)
+CREATE OR REPLACE TRIGGER TRG_CHECK_TRUNG_TENDANGNHAP
+FOR INSERT ON DOCGIA
+COMPOUND TRIGGER
+
+    TYPE T_DOCGIA IS RECORD (
+        TenDangNhap  VARCHAR2(50)
+    );
+    TYPE T_DOCGIA_LIST IS TABLE OF T_DOCGIA;
+    V_LIST T_DOCGIA_LIST := T_DOCGIA_LIST();
+
+    BEFORE EACH ROW IS
+    BEGIN
+        -- Tu dong dong bo TenDangNhap tu TAIKHOAN neu chua co
+        IF :NEW.TenDangNhap IS NULL AND :NEW.MaTaiKhoan IS NOT NULL THEN
+            BEGIN
+                SELECT TenDangNhap INTO :NEW.TenDangNhap
+                FROM TAIKHOAN
+                WHERE MaTaiKhoan = :NEW.MaTaiKhoan;
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN NULL;
+            END;
+        END IF;
+
+        V_LIST.EXTEND;
+        V_LIST(V_LIST.LAST).TenDangNhap := :NEW.TenDangNhap;
+    END BEFORE EACH ROW;
+
+    AFTER STATEMENT IS
+        V_COUNT NUMBER;
+    BEGIN
+        FOR I IN 1 .. V_LIST.COUNT LOOP
+            -- Check duplicate TenDangNhap (username)
+            IF V_LIST(I).TenDangNhap IS NOT NULL THEN
+                SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE TenDangNhap = V_LIST(I).TenDangNhap;
+                IF V_COUNT > 1 THEN
+                    RAISE_APPLICATION_ERROR(-20001, 'Loi: Ten dang nhap nay da ton tai tren he thong!');
                 END IF;
             END IF;
         END LOOP;
@@ -535,7 +600,7 @@ FOR EACH ROW
 DECLARE
     V_NGAY_HEN_TRA DATE;
     V_SO_NGAY_TRE  NUMBER;
-    C_DON_GIA_PHAT CONSTANT NUMBER := 5000; -- 5.000 VND/ngay theo bao cao
+    C_DON_GIA_PHAT CONSTANT NUMBER := 1000; -- 1.000 VND/ngay theo bao cao
 BEGIN
     SELECT NgayHenTra
     INTO V_NGAY_HEN_TRA
@@ -890,6 +955,7 @@ CREATE OR REPLACE PROCEDURE SP_TRA_SACH_NCC(
 IS
     V_SO_LUONG_CON NUMBER;
     V_DON_GIA      NUMBER;
+    V_MA_NCC       VARCHAR2(20);
 BEGIN
     IF P_SO_LUONG <= 0 THEN
         RAISE_APPLICATION_ERROR(-20130, 'So luong tra NCC phai lon hon 0.');
@@ -910,9 +976,14 @@ BEGIN
         RAISE_APPLICATION_ERROR(-20131, 'Khong du sach trong kho de tra NCC.');
     END IF;
 
+    -- Lay ma nha cung cap tu phieu nhap
+    SELECT MaNhaCungCap INTO V_MA_NCC
+    FROM PHIEUNHAP
+    WHERE MaPhieuNhap = P_MA_PHIEU_NHAP;
+
     -- Ghi phieu tra NCC
-    INSERT INTO PHIEUTRANCC(MaPhieuNhap, MaNhanVien, NgayTra, LyDo)
-    VALUES (P_MA_PHIEU_NHAP, P_MA_NHANVIEN, SYSDATE, P_LY_DO);
+    INSERT INTO PHIEUTRANCC(MaNhaCungCap, MaNhanVien, NgayTra, LyDo)
+    VALUES (V_MA_NCC, P_MA_NHANVIEN, SYSDATE, P_LY_DO);
 
     -- Tru kho
     UPDATE KHOSACH
