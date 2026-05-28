@@ -192,10 +192,201 @@ END;
 /
 
 -- =============================================================
--- 3) BUSINESS TRIGGERS (theo bao cao - Bang 3.1)
+-- 3) FUNCTIONS (compiled first, so triggers can reference them)
 -- =============================================================
 
--- 3.1) TRG_AUTO_NGAYHENTRA: Tu dong gan NgayHenTra = NgayMuon + 14 neu chua co
+-- 3.1) FN_TINH_TIEN_PHAT
+CREATE OR REPLACE FUNCTION FN_TINH_TIEN_PHAT(P_MA_PHIEUMUON IN VARCHAR2)
+RETURN NUMBER
+IS
+    V_NGAY_HEN_TRA DATE;
+    V_SO_NGAY_TRE  NUMBER;
+    C_DON_GIA      CONSTANT NUMBER := 5000;
+BEGIN
+    SELECT NgayHenTra
+    INTO V_NGAY_HEN_TRA
+    FROM PHIEUMUON
+    WHERE MaPhieuMuon = P_MA_PHIEUMUON;
+
+    V_SO_NGAY_TRE := GREATEST(TRUNC(SYSDATE) - TRUNC(V_NGAY_HEN_TRA), 0);
+    RETURN V_SO_NGAY_TRE * C_DON_GIA;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN 0;
+END;
+/
+
+-- 3.2) FN_TINH_TIENPHAT (alias)
+CREATE OR REPLACE FUNCTION FN_TINH_TIENPHAT(P_MA_PHIEUMUON IN VARCHAR2)
+RETURN NUMBER
+IS
+BEGIN
+    RETURN FN_TINH_TIEN_PHAT(P_MA_PHIEUMUON);
+END;
+/
+
+-- 3.3) FN_SO_SACH_DANG_MUON
+CREATE OR REPLACE FUNCTION FN_SO_SACH_DANG_MUON(P_MA_DOCGIA IN VARCHAR2)
+RETURN NUMBER
+IS
+    V_COUNT NUMBER;
+BEGIN
+    SELECT NVL(SUM(CT.SoLuong), 0)
+    INTO V_COUNT
+    FROM PHIEUMUON PM
+    JOIN CT_PHIEUMUON CT ON CT.MaPhieuMuon = PM.MaPhieuMuon
+    WHERE PM.MaDocGia = P_MA_DOCGIA
+      AND PM.TrangThai IN ('DANG_MUON', 'QUA_HAN');
+
+    RETURN V_COUNT;
+END;
+/
+
+-- 3.4) FN_DEM_SACH_DANG_MUON (alias)
+CREATE OR REPLACE FUNCTION FN_DEM_SACH_DANG_MUON(P_MA_DOCGIA IN VARCHAR2)
+RETURN NUMBER
+IS
+BEGIN
+    RETURN FN_SO_SACH_DANG_MUON(P_MA_DOCGIA);
+END;
+/
+
+-- 3.5) FN_DEM_SACH_CHO_MUON (New name from report table - based on MaPhieuMuon)
+CREATE OR REPLACE FUNCTION FN_DEM_SACH_CHO_MUON(PAR_MAPHIEUMUON IN VARCHAR2)
+RETURN NUMBER
+IS
+    V_COUNT NUMBER;
+BEGIN
+    SELECT NVL(SUM(SoLuong), 0)
+    INTO V_COUNT
+    FROM CT_PHIEUMUON
+    WHERE MaPhieuMuon = PAR_MAPHIEUMUON
+      AND TrangThai = 'DANG_MUON';
+    RETURN V_COUNT;
+END;
+/
+
+-- 3.6) FN_KIEM_TRA_HAN_THE (New name from report table)
+CREATE OR REPLACE FUNCTION FN_KIEM_TRA_HAN_THE(PAR_MADOCGIA IN VARCHAR2)
+RETURN NUMBER
+IS
+    V_COUNT NUMBER;
+BEGIN
+    SELECT COUNT(*)
+    INTO V_COUNT
+    FROM DOCGIA
+    WHERE MaDocGia = PAR_MADOCGIA
+      AND TrangThai = 'HOAT_DONG'
+      AND (NgayHetHan IS NULL OR NgayHetHan >= TRUNC(SYSDATE));
+
+    IF V_COUNT = 1 THEN
+        RETURN 1; -- Valid / Active & Not expired
+    ELSE
+        RETURN 0; -- Expired / Invalid
+    END IF;
+END;
+/
+
+-- 3.7) FN_KIEM_TRA_THE_HOP_LE (alias)
+CREATE OR REPLACE FUNCTION FN_KIEM_TRA_THE_HOP_LE(P_MA_DOCGIA IN VARCHAR2)
+RETURN NUMBER
+IS
+BEGIN
+    RETURN FN_KIEM_TRA_HAN_THE(P_MA_DOCGIA);
+END;
+/
+
+-- 3.8) FN_KIEM_THE_HOPHANH (alias)
+CREATE OR REPLACE FUNCTION FN_KIEM_THE_HOPHANH(P_MA_DOCGIA IN VARCHAR2)
+RETURN NUMBER
+IS
+BEGIN
+    RETURN FN_KIEM_TRA_HAN_THE(P_MA_DOCGIA);
+END;
+/
+
+-- 3.9) FN_LAY_SO_LUONG_TON (New name from report table)
+CREATE OR REPLACE FUNCTION FN_LAY_SO_LUONG_TON(PAR_MASACH IN VARCHAR2)
+RETURN NUMBER
+IS
+    V_SO_LUONG NUMBER;
+BEGIN
+    SELECT SoLuongCon INTO V_SO_LUONG FROM KHOSACH WHERE MaSach = PAR_MASACH;
+    RETURN V_SO_LUONG;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN 0;
+END;
+/
+
+-- 3.10) FN_SO_LUONG_CON_LAI (alias)
+CREATE OR REPLACE FUNCTION FN_SO_LUONG_CON_LAI(P_MA_SACH IN VARCHAR2)
+RETURN NUMBER
+IS
+BEGIN
+    RETURN FN_LAY_SO_LUONG_TON(P_MA_SACH);
+END;
+/
+
+
+-- =============================================================
+-- 4) BUSINESS TRIGGERS
+-- =============================================================
+
+-- 4.1) TRG_CHECK_TRUNG_DOCGIA: Chặn tạo mới độc giả nếu tài khoản/thông tin bị trùng lặp.
+CREATE OR REPLACE TRIGGER TRG_CHECK_TRUNG_DOCGIA
+FOR INSERT ON DOCGIA
+COMPOUND TRIGGER
+
+    TYPE T_DOCGIA IS RECORD (
+        MaTaiKhoan   VARCHAR2(20),
+        Email        VARCHAR2(100),
+        SoDienThoai  VARCHAR2(20)
+    );
+    TYPE T_DOCGIA_LIST IS TABLE OF T_DOCGIA;
+    V_LIST T_DOCGIA_LIST := T_DOCGIA_LIST();
+
+    BEFORE EACH ROW IS
+    BEGIN
+        V_LIST.EXTEND;
+        V_LIST(V_LIST.LAST).MaTaiKhoan := :NEW.MaTaiKhoan;
+        V_LIST(V_LIST.LAST).Email := :NEW.Email;
+        V_LIST(V_LIST.LAST).SoDienThoai := :NEW.SoDienThoai;
+    END BEFORE EACH ROW;
+
+    AFTER STATEMENT IS
+        V_COUNT NUMBER;
+    BEGIN
+        FOR I IN 1 .. V_LIST.COUNT LOOP
+            -- Check duplicate account
+            IF V_LIST(I).MaTaiKhoan IS NOT NULL THEN
+                SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE MaTaiKhoan = V_LIST(I).MaTaiKhoan;
+                IF V_COUNT > 1 THEN
+                    RAISE_APPLICATION_ERROR(-20220, 'Tai khoan doc gia nay da ton tai trong he thong.');
+                END IF;
+            END IF;
+
+            -- Check duplicate email
+            IF V_LIST(I).Email IS NOT NULL THEN
+                SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE Email = V_LIST(I).Email;
+                IF V_COUNT > 1 THEN
+                    RAISE_APPLICATION_ERROR(-20221, 'Email doc gia nay da ton tai trong he thong.');
+                END IF;
+            END IF;
+
+            -- Check duplicate phone number
+            IF V_LIST(I).SoDienThoai IS NOT NULL THEN
+                SELECT COUNT(*) INTO V_COUNT FROM DOCGIA WHERE SoDienThoai = V_LIST(I).SoDienThoai;
+                IF V_COUNT > 1 THEN
+                    RAISE_APPLICATION_ERROR(-20222, 'So dien thoai doc gia nay da ton tai trong he thong.');
+                END IF;
+            END IF;
+        END LOOP;
+    END AFTER STATEMENT;
+END;
+/
+
+-- 4.2) TRG_AUTO_NGAYHENTRA: Tu dong gan NgayHenTra = NgayMuon + 14 neu chua co
 CREATE OR REPLACE TRIGGER TRG_AUTO_NGAYHENTRA
 BEFORE INSERT ON PHIEUMUON
 FOR EACH ROW
@@ -206,33 +397,18 @@ BEGIN
 END;
 /
 
--- 3.2) TRG_KIEMTRA_THE_HETHAN: Khong cho mu n neu the doc gia het han hoac bi khoa
-CREATE OR REPLACE TRIGGER TRG_KIEMTRA_THE_HETHAN
+-- 4.3) TRG_CHECK_HANDOCGIA: Ngăn chặn tạo phiếu mượn nếu thẻ độc giả đã hết hạn sử dụng.
+CREATE OR REPLACE TRIGGER TRG_CHECK_HANDOCGIA
 BEFORE INSERT ON PHIEUMUON
 FOR EACH ROW
-DECLARE
-    V_TRANGTHAI    DOCGIA.TrangThai%TYPE;
-    V_NGAY_HET_HAN DOCGIA.NgayHetHan%TYPE;
 BEGIN
-    SELECT TrangThai, NgayHetHan
-    INTO V_TRANGTHAI, V_NGAY_HET_HAN
-    FROM DOCGIA
-    WHERE MaDocGia = :NEW.MaDocGia;
-
-    IF V_TRANGTHAI <> 'HOAT_DONG' THEN
-        RAISE_APPLICATION_ERROR(-20201, 'The doc gia da bi khoa hoac het han.');
+    IF FN_KIEM_TRA_HAN_THE(:NEW.MaDocGia) = 0 THEN
+        RAISE_APPLICATION_ERROR(-20202, 'The doc gia da het han su dung hoac bi khoa.');
     END IF;
-
-    IF V_NGAY_HET_HAN IS NOT NULL AND V_NGAY_HET_HAN < TRUNC(SYSDATE) THEN
-        RAISE_APPLICATION_ERROR(-20202, 'The doc gia da het han su dung.');
-    END IF;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        RAISE_APPLICATION_ERROR(-20203, 'Khong tim thay doc gia.');
 END;
 /
 
--- 3.3) TRG_KIEMTRA_QUOTA: Khong cho doc gia muon qua quota (mac dinh 5 cuon)
+-- 4.4) TRG_KIEMTRA_QUOTA: Khong cho doc gia muon qua quota (mac dinh 5 cuon)
 CREATE OR REPLACE TRIGGER TRG_KIEMTRA_QUOTA
 BEFORE INSERT ON PHIEUMUON
 FOR EACH ROW
@@ -254,7 +430,7 @@ BEGIN
 END;
 /
 
--- 3.4) TRG_KIEMTRA_TRUNG_SACH: Khong cho 1 phieu muon co 2 dong cung MaSach
+-- 4.5) TRG_KIEMTRA_TRUNG_SACH: Khong cho 1 phieu muon co 2 dong cung MaSach
 CREATE OR REPLACE TRIGGER TRG_KIEMTRA_TRUNG_SACH
 BEFORE INSERT ON CT_PHIEUMUON
 FOR EACH ROW
@@ -274,18 +450,14 @@ BEGIN
 END;
 /
 
--- 3.5) TRG_TRU_TONKHO_MUON: Tu dong tru ton kho khi mu n sach
-CREATE OR REPLACE TRIGGER TRG_TRU_TONKHO_MUON
-AFTER INSERT ON CT_PHIEUMUON
+-- 4.6) TRG_CHECK_TONKHO_MUON: Kiểm tra sách trong kho còn đủ không trước khi cho mượn. (BEFORE INSERT)
+CREATE OR REPLACE TRIGGER TRG_CHECK_TONKHO_MUON
+BEFORE INSERT ON CT_PHIEUMUON
 FOR EACH ROW
 DECLARE
     V_SO_LUONG_CON NUMBER;
 BEGIN
-    SELECT SoLuongCon
-    INTO V_SO_LUONG_CON
-    FROM KHOSACH
-    WHERE MaSach = :NEW.MaSach
-    FOR UPDATE;
+    V_SO_LUONG_CON := FN_LAY_SO_LUONG_TON(:NEW.MaSach);
 
     IF V_SO_LUONG_CON < :NEW.SoLuong THEN
         RAISE_APPLICATION_ERROR(-20206,
@@ -299,7 +471,7 @@ BEGIN
 END;
 /
 
--- 3.6) TRG_CONG_TONKHO_TRA: Tu dong cong lai kho khi phieu tra duoc tao
+-- 4.7) TRG_CONG_TONKHO_TRA: Tu dong cong lai kho khi phieu tra duoc tao
 CREATE OR REPLACE TRIGGER TRG_CONG_TONKHO_TRA
 AFTER INSERT ON PHIEUTRA
 FOR EACH ROW
@@ -329,7 +501,7 @@ BEGIN
 END;
 /
 
--- 3.7) TRG_TINH_TIENPHAT: Tu dong tinh tien phat = so ngay tre x 5000
+-- 4.8) TRG_TINH_TIENPHAT: Tu dong tinh tien phat = so ngay tre x 5000
 CREATE OR REPLACE TRIGGER TRG_TINH_TIENPHAT
 BEFORE INSERT ON PHIEUTRA
 FOR EACH ROW
@@ -353,7 +525,7 @@ BEGIN
 END;
 /
 
--- 3.8) TRG_CAPNHAT_KHO_NHAP: Tu dong cap nhat ton kho khi nhap sach
+-- 4.9) TRG_CAPNHAT_KHO_NHAP: Tu dong cap nhat ton kho khi nhap sach
 CREATE OR REPLACE TRIGGER TRG_CAPNHAT_KHO_NHAP
 AFTER INSERT ON CT_PHIEUNHAP
 FOR EACH ROW
@@ -377,7 +549,7 @@ BEGIN
 END;
 /
 
--- 3.9) TRG_CAPNHAT_QUA_HAN: Khi UPDATE PHIEUMUON, tu dong chuyen sang QUA_HAN
+-- 4.10) TRG_CAPNHAT_QUA_HAN: Khi UPDATE PHIEUMUON, tu dong chuyen sang QUA_HAN
 CREATE OR REPLACE TRIGGER TRG_CAPNHAT_QUA_HAN
 BEFORE UPDATE ON PHIEUMUON
 FOR EACH ROW
@@ -389,107 +561,7 @@ END;
 /
 
 -- =============================================================
--- 4) FUNCTIONS (theo bao cao - Bang 3.3)
--- =============================================================
-
--- 4.1) FN_TINH_TIEN_PHAT (ten cu, giu lai)
-CREATE OR REPLACE FUNCTION FN_TINH_TIEN_PHAT(P_MA_PHIEUMUON IN VARCHAR2)
-RETURN NUMBER
-IS
-    V_NGAY_HEN_TRA DATE;
-    V_SO_NGAY_TRE  NUMBER;
-    C_DON_GIA      CONSTANT NUMBER := 5000;
-BEGIN
-    SELECT NgayHenTra
-    INTO V_NGAY_HEN_TRA
-    FROM PHIEUMUON
-    WHERE MaPhieuMuon = P_MA_PHIEUMUON;
-
-    V_SO_NGAY_TRE := GREATEST(TRUNC(SYSDATE) - TRUNC(V_NGAY_HEN_TRA), 0);
-    RETURN V_SO_NGAY_TRE * C_DON_GIA;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        RETURN 0;
-END;
-/
-
--- 4.2) FN_TINH_TIENPHAT (alias theo bao cao)
-CREATE OR REPLACE FUNCTION FN_TINH_TIENPHAT(P_MA_PHIEUMUON IN VARCHAR2)
-RETURN NUMBER
-IS
-BEGIN
-    RETURN FN_TINH_TIEN_PHAT(P_MA_PHIEUMUON);
-END;
-/
-
--- 4.3) FN_SO_SACH_DANG_MUON (ten cu)
-CREATE OR REPLACE FUNCTION FN_SO_SACH_DANG_MUON(P_MA_DOCGIA IN VARCHAR2)
-RETURN NUMBER
-IS
-    V_COUNT NUMBER;
-BEGIN
-    SELECT NVL(SUM(CT.SoLuong), 0)
-    INTO V_COUNT
-    FROM PHIEUMUON PM
-    JOIN CT_PHIEUMUON CT ON CT.MaPhieuMuon = PM.MaPhieuMuon
-    WHERE PM.MaDocGia = P_MA_DOCGIA
-      AND PM.TrangThai IN ('DANG_MUON', 'QUA_HAN');
-
-    RETURN V_COUNT;
-END;
-/
-
--- 4.4) FN_DEM_SACH_DANG_MUON (alias theo bao cao)
-CREATE OR REPLACE FUNCTION FN_DEM_SACH_DANG_MUON(P_MA_DOCGIA IN VARCHAR2)
-RETURN NUMBER
-IS
-BEGIN
-    RETURN FN_SO_SACH_DANG_MUON(P_MA_DOCGIA);
-END;
-/
-
--- 4.5) FN_KIEM_TRA_THE_HOP_LE (ten cu)
-CREATE OR REPLACE FUNCTION FN_KIEM_TRA_THE_HOP_LE(P_MA_DOCGIA IN VARCHAR2)
-RETURN NUMBER
-IS
-    V_COUNT NUMBER;
-BEGIN
-    SELECT COUNT(*)
-    INTO V_COUNT
-    FROM DOCGIA
-    WHERE MaDocGia = P_MA_DOCGIA
-      AND TrangThai = 'HOAT_DONG'
-      AND (NgayHetHan IS NULL OR NgayHetHan >= TRUNC(SYSDATE));
-
-    RETURN CASE WHEN V_COUNT = 1 THEN 1 ELSE 0 END;
-END;
-/
-
--- 4.6) FN_KIEM_THE_HOPHANH (alias theo bao cao)
-CREATE OR REPLACE FUNCTION FN_KIEM_THE_HOPHANH(P_MA_DOCGIA IN VARCHAR2)
-RETURN NUMBER
-IS
-BEGIN
-    RETURN FN_KIEM_TRA_THE_HOP_LE(P_MA_DOCGIA);
-END;
-/
-
--- 4.7) FN_SO_LUONG_CON_LAI (tien ich)
-CREATE OR REPLACE FUNCTION FN_SO_LUONG_CON_LAI(P_MA_SACH IN VARCHAR2)
-RETURN NUMBER
-IS
-    V_SO_LUONG NUMBER;
-BEGIN
-    SELECT SoLuongCon INTO V_SO_LUONG FROM KHOSACH WHERE MaSach = P_MA_SACH;
-    RETURN V_SO_LUONG;
-EXCEPTION
-    WHEN NO_DATA_FOUND THEN
-        RETURN 0;
-END;
-/
-
--- =============================================================
--- 5) PROCEDURES (theo bao cao - Bang 3.2)
+-- 5) PROCEDURES
 -- =============================================================
 
 -- 5.1) SP_DANGKY_DOCGIA
@@ -539,7 +611,7 @@ CREATE OR REPLACE PROCEDURE SP_TAO_PHIEU_MUON(
 )
 IS
 BEGIN
-    -- Trigger TRG_KIEMTRA_THE_HETHAN, TRG_KIEMTRA_QUOTA se kiem tra dieu kien
+    -- Trigger TRG_CHECK_HANDOCGIA, TRG_KIEMTRA_QUOTA se kiem tra dieu kien
     -- Trigger TRG_AUTO_NGAYHENTRA se gan ngay neu NULL
     INSERT INTO PHIEUMUON(MaDocGia, MaNhanVien, NgayMuon, NgayHenTra, TrangThai)
     VALUES (P_MA_DOCGIA, P_MA_NHANVIEN, SYSDATE, P_NGAY_HEN_TRA, 'DANG_MUON')
@@ -548,7 +620,7 @@ END;
 /
 
 -- 5.3) SP_THEM_CT_PHIEUMUON (giu lai - backend dang dung)
--- Da refactor: tin tuong TRG_TRU_TONKHO_MUON xu ly tru kho + kiem tra so luong
+-- Da refactor: tin tuong TRG_CHECK_TONKHO_MUON xu ly tru kho + kiem tra so luong
 CREATE OR REPLACE PROCEDURE SP_THEM_CT_PHIEUMUON(
     P_MA_PHIEU_MUON IN VARCHAR2,
     P_MA_SACH       IN VARCHAR2,
@@ -561,7 +633,7 @@ BEGIN
     END IF;
 
     -- Trigger TRG_KIEMTRA_TRUNG_SACH chan trung
-    -- Trigger TRG_TRU_TONKHO_MUON tu dong tru kho va kiem tra so luong
+    -- Trigger TRG_CHECK_TONKHO_MUON tu dong tru kho va kiem tra so luong
     INSERT INTO CT_PHIEUMUON(MaPhieuMuon, MaSach, SoLuong)
     VALUES (P_MA_PHIEU_MUON, P_MA_SACH, P_SO_LUONG);
 
@@ -586,7 +658,7 @@ IS
     V_MA_SACH     VARCHAR2(20);
     V_TONG_SLSACH NUMBER := 0;
 BEGIN
-    -- Tao phieu muon (trigger TRG_KIEMTRA_THE_HETHAN, TRG_KIEMTRA_QUOTA chay)
+    -- Tao phieu muon (trigger TRG_CHECK_HANDOCGIA, TRG_KIEMTRA_QUOTA chay)
     INSERT INTO PHIEUMUON(MaDocGia, MaNhanVien, NgayMuon, NgayHenTra, TrangThai, TienDatCoc, SoLuongSach)
     VALUES (P_MA_DOCGIA, P_MA_NHANVIEN, SYSDATE, NULL, 'DANG_MUON', P_TIEN_DAT_COC, 0)
     RETURNING MaPhieuMuon INTO P_MA_PHIEU_MUON;
@@ -601,7 +673,7 @@ BEGIN
         V_REMAINING := SUBSTR(V_REMAINING, V_POS + 1);
 
         IF V_MA_SACH IS NOT NULL THEN
-            -- Trigger TRG_KIEMTRA_TRUNG_SACH va TRG_TRU_TONKHO_MUON tu xu ly
+            -- Trigger TRG_KIEMTRA_TRUNG_SACH va TRG_CHECK_TONKHO_MUON tu xu ly
             INSERT INTO CT_PHIEUMUON(MaPhieuMuon, MaSach, SoLuong)
             VALUES (P_MA_PHIEU_MUON, V_MA_SACH, 1);
             V_TONG_SLSACH := V_TONG_SLSACH + 1;
